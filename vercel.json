@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["lhr1"],
+  "headers": [
+    {
+      "source": "/api/health",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=300, stale-while-revalidate=600" }
+      ]
+    }
+  ],
+  "crons": []
+}
