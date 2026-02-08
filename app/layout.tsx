@@ -9,6 +9,7 @@ import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { ShortcutHelp } from "@/components/ShortcutHelp";
 import { Footer } from "@/components/Footer";
 import { RouteProgress } from "@/components/RouteProgress";
+import { Analytics } from "@vercel/analytics/react";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -95,6 +96,7 @@ export default async function RootLayout({
           </div>
           <Footer />
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
