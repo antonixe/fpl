@@ -56,7 +56,7 @@ export async function getBootstrapData(): Promise<BootstrapData> {
     logger.debug('bootstrap cache stale — serving stale, revalidating');
     if (!bootstrapRevalidating) {
       bootstrapRevalidating = true;
-      fplFetch<BootstrapData>('/bootstrap-static/', { cache: 'no-store', timeout: 20_000 })
+      fplFetch<BootstrapData>('/bootstrap-static/', { cache: 'no-store', timeout: 9_000 })
         .then(data => { bootstrapCache = { data, timestamp: Date.now() }; })
         .catch(err => { logger.warn('bootstrap background revalidation failed', { error: err.message }); })
         .finally(() => { bootstrapRevalidating = false; });
@@ -68,7 +68,7 @@ export async function getBootstrapData(): Promise<BootstrapData> {
   const data = await logger.time('fetch bootstrap-static', () =>
     fplFetch<BootstrapData>('/bootstrap-static/', {
       cache: 'no-store',
-      timeout: 20_000,
+      timeout: 9_000,
     }),
     { source: 'fpl-server' }
   );
@@ -90,7 +90,7 @@ export async function getFixtures(): Promise<Fixture[]> {
     logger.debug('fixtures cache stale — serving stale, revalidating');
     if (!fixturesRevalidating) {
       fixturesRevalidating = true;
-      fplFetch<Fixture[]>('/fixtures/', { cache: 'no-store', timeout: 15_000 })
+      fplFetch<Fixture[]>('/fixtures/', { cache: 'no-store', timeout: 8_000 })
         .then(data => { fixturesCache = { data, timestamp: Date.now() }; })
         .catch(err => { logger.warn('fixtures background revalidation failed', { error: err.message }); })
         .finally(() => { fixturesRevalidating = false; });
@@ -101,7 +101,7 @@ export async function getFixtures(): Promise<Fixture[]> {
   const data = await logger.time('fetch fixtures', () =>
     fplFetch<Fixture[]>('/fixtures/', {
       cache: 'no-store',
-      timeout: 15_000,
+      timeout: 8_000,
     }),
     { source: 'fpl-server' }
   );
@@ -140,7 +140,7 @@ export async function getPlayerDetail(playerId: number): Promise<PlayerDetailDat
   // Stale — return stale and refresh in background
   if (cached && Date.now() - cached.timestamp < STALE_TTL) {
     logger.debug(`player detail stale — serving stale: ${playerId}`);
-    fplFetch<PlayerDetailData>(`/element-summary/${playerId}/`, { cache: 'no-store', timeout: 15_000 })
+    fplFetch<PlayerDetailData>(`/element-summary/${playerId}/`, { cache: 'no-store', timeout: 8_000 })
       .then(data => { playerDetailCache.set(playerId, { data, timestamp: Date.now() }); })
       .catch(err => { logger.warn(`player detail revalidation failed: ${playerId}`, { error: err.message }); });
     return cached.data;
@@ -150,7 +150,7 @@ export async function getPlayerDetail(playerId: number): Promise<PlayerDetailDat
     const data = await logger.time(`fetch element-summary/${playerId}`, () =>
       fplFetch<PlayerDetailData>(`/element-summary/${playerId}/`, {
         cache: 'no-store',
-        timeout: 15_000,
+        timeout: 8_000,
       }),
       { source: 'fpl-server' }
     );
@@ -168,6 +168,88 @@ export async function getPlayerDetail(playerId: number): Promise<PlayerDetailDat
 export async function getTeamById(teamId: number): Promise<Team | undefined> {
   const data = await getBootstrapData();
   return data.teams.find(t => t.id === teamId);
+}
+
+// ---- Entry (manager team) cache ----
+const entryCache = new Map<number, { data: EntryData; timestamp: number }>();
+const ENTRY_CACHE_TTL = 2 * 60 * 1000; // 2 minutes (more dynamic data)
+const ENTRY_STALE_TTL = 15 * 60 * 1000; // 15 minutes stale
+
+export interface EntryData {
+  entry: Record<string, unknown>;
+  picks: Record<string, unknown> | null;
+  chips: unknown[];
+  season_history: unknown[];
+}
+
+/**
+ * Fetch a manager's team entry with caching.
+ * This calls 3 FPL API endpoints but caches the combined result.
+ */
+export async function getEntry(entryId: number): Promise<EntryData | null> {
+  const cached = entryCache.get(entryId);
+
+  // Fresh cache
+  if (cached && Date.now() - cached.timestamp < ENTRY_CACHE_TTL) {
+    logger.debug(`entry cache hit: ${entryId}`);
+    return cached.data;
+  }
+
+  // Stale — return immediately and refresh in background
+  if (cached && Date.now() - cached.timestamp < ENTRY_STALE_TTL) {
+    logger.debug(`entry cache stale — serving stale: ${entryId}`);
+    fetchEntryData(entryId)
+      .then(data => { if (data) entryCache.set(entryId, { data, timestamp: Date.now() }); })
+      .catch(err => { logger.warn(`entry revalidation failed: ${entryId}`, { error: err.message }); });
+    return cached.data;
+  }
+
+  // No cache — must fetch
+  try {
+    const data = await fetchEntryData(entryId);
+    if (data) {
+      entryCache.set(entryId, { data, timestamp: Date.now() });
+    }
+    return data;
+  } catch (err) {
+    logger.error(`Failed to fetch entry/${entryId}`, err instanceof Error ? { message: err.message } : undefined);
+    return null;
+  }
+}
+
+async function fetchEntryData(entryId: number): Promise<EntryData | null> {
+  // Step 1: Get entry info (needed for current GW)
+  let entry: { current_event?: number };
+  try {
+    entry = await fplFetch<{ current_event?: number }>(`/entry/${entryId}/`, {
+      cache: 'no-store',
+      timeout: 8_000,
+      retries: 1,
+    });
+  } catch {
+    return null;
+  }
+
+  const currentEvent = entry.current_event;
+
+  // Step 2: Fetch picks + history in parallel
+  const [picks, history] = await Promise.all([
+    currentEvent
+      ? fplFetch(`/entry/${entryId}/event/${currentEvent}/picks/`, {
+          cache: 'no-store', timeout: 8_000, retries: 0,
+        }).catch(() => null)
+      : null,
+    fplFetch<{ chips?: unknown[]; current?: unknown[] }>(`/entry/${entryId}/history/`, {
+      cache: 'no-store', timeout: 8_000, retries: 0,
+    }).catch(() => null),
+  ]);
+
+  return {
+    entry: entry as Record<string, unknown>,
+    picks: picks as Record<string, unknown> | null,
+    chips: history?.chips || [],
+    season_history: history?.current || [],
+  };
 }
 
 /**

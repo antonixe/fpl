@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fplFetch } from '@/lib/fpl-fetch';
+import { getEntry } from '@/lib/fpl-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,33 +15,16 @@ export async function GET(
   }
 
   try {
-    // Fetch entry info to determine current GW
-    let entry: { current_event?: number };
-    try {
-      entry = await fplFetch<{ current_event?: number }>(`/entry/${entryId}/`, {
-        cache: 'no-store',
-        timeout: 15_000,
-      });
-    } catch {
-      return NextResponse.json({ error: 'Team not found. Check your FPL ID.' }, { status: 404 });
+    const data = await getEntry(entryId);
+
+    if (!data) {
+      return NextResponse.json(
+        { error: 'Team not found. Check your FPL ID.' },
+        { status: 404 }
+      );
     }
 
-    const currentEvent = entry.current_event;
-
-    // Fetch current GW picks and transfer history in parallel
-    const [picks, history] = await Promise.all([
-      currentEvent
-        ? fplFetch(`/entry/${entryId}/event/${currentEvent}/picks/`, { cache: 'no-store', timeout: 15_000 }).catch(() => null)
-        : null,
-      fplFetch<{ chips?: unknown[]; current?: unknown[] }>(`/entry/${entryId}/history/`, { cache: 'no-store', timeout: 15_000 }).catch(() => null),
-    ]);
-
-    return NextResponse.json({
-      entry,
-      picks,
-      chips: history?.chips || [],
-      season_history: history?.current || [],
-    }, {
+    return NextResponse.json(data, {
       headers: {
         'Cache-Control': 's-maxage=60, stale-while-revalidate=300',
       },

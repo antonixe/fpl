@@ -19,8 +19,8 @@ export async function GET(
 
     // Fetch both GW fixtures and live element data in parallel
     const [fixtures, liveData] = await Promise.all([
-      fplFetch<unknown[]>(`/fixtures/?event=${gwNum}`, { cache: 'no-store', timeout: 15_000 }),
-      fplFetch<{ elements?: unknown[] }>(`/event/${gwNum}/live/`, { cache: 'no-store', timeout: 15_000 }),
+      fplFetch<unknown[]>(`/fixtures/?event=${gwNum}`, { cache: 'no-store', timeout: 8_000, retries: 0 }),
+      fplFetch<{ elements?: unknown[] }>(`/event/${gwNum}/live/`, { cache: 'no-store', timeout: 8_000, retries: 0 }),
     ]);
 
     return NextResponse.json({

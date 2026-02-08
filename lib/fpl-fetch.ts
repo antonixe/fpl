@@ -1,9 +1,9 @@
 import { FPL_API_BASE } from '@/lib/constants';
 import { logger } from '@/lib/logger';
 
-const DEFAULT_TIMEOUT = 15_000; // 15 seconds (bootstrap-static is ~2.5MB)
-const MAX_RETRIES = 2;
-const RETRY_DELAY = 1_500; // 1.5 seconds
+const DEFAULT_TIMEOUT = 8_000; // 8 seconds (must fit within Vercel's 10s function limit)
+const MAX_RETRIES = 1;
+const RETRY_DELAY = 500; // 0.5 seconds
 
 interface FetchOptions {
   /** Timeout in ms (default 10s) */
