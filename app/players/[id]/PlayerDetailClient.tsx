@@ -47,42 +47,73 @@ export default function PlayerDetailClient({ playerId, initialDetail }: PlayerDe
   // Data is available immediately from SSR hydration — only truly "loading" if empty
   const hasData = players.length > 0;
 
-  const [detail, setDetail] = useState<PlayerDetail | null>(
-    initialDetail ? (initialDetail as unknown as PlayerDetail) : null
-  );
-  const [detailLoading, setDetailLoading] = useState(!initialDetail);
+  // Only trust initialDetail if it actually has history data
+  const validInitialDetail = initialDetail?.history?.length
+    ? (initialDetail as unknown as PlayerDetail)
+    : null;
+
+  const [detail, setDetail] = useState<PlayerDetail | null>(validInitialDetail);
+  const [detailLoading, setDetailLoading] = useState(!validInitialDetail);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const player = useMemo(() => players.find(p => p.id === playerId), [players, playerId]);
   const currentGW = useMemo(() => getCurrentGW(gameweeks), [gameweeks]);
 
   useEffect(() => {
-    // Skip client fetch if we already have server-provided data
-    if (initialDetail) return;
+    // Skip client fetch if we already have valid server-provided data with history
+    if (validInitialDetail) return;
     if (!validId) {
       setDetailError('Invalid player ID');
       setDetailLoading(false);
       return;
     }
-    const controller = new AbortController();
-    setDetailLoading(true);
-    setDetailError(null);
-    fetch(`/api/player/${playerId}`, { signal: controller.signal })
-      .then(res => {
-        if (!res.ok) throw new Error('Player not found');
-        return res.json();
-      })
-      .then((data: PlayerDetail) => {
-        setDetail(data);
-        setDetailLoading(false);
-      })
-      .catch(err => {
-        if (err.name === 'AbortError') return;
-        setDetailError(err.message);
-        setDetailLoading(false);
-      });
-    return () => controller.abort();
-  }, [playerId, validId]);
+
+    let cancelled = false;
+    const maxRetries = 2;
+
+    async function fetchWithRetry() {
+      setDetailLoading(true);
+      setDetailError(null);
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(`/api/player/${playerId}`);
+          if (!res.ok) throw new Error('Player not found');
+          const data: PlayerDetail = await res.json();
+          if (cancelled) return;
+
+          // Verify we got actual history data
+          if (data.history?.length > 0) {
+            setDetail(data);
+            setDetailLoading(false);
+            return;
+          }
+
+          // Empty history — retry after a delay
+          if (attempt < maxRetries) {
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
+          }
+
+          // Final attempt still empty — show what we have
+          setDetail(data);
+          setDetailLoading(false);
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          if (attempt < maxRetries) {
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
+          }
+          setDetailError(err instanceof Error ? err.message : 'Failed to load player data');
+          setDetailLoading(false);
+        }
+      }
+    }
+
+    fetchWithRetry();
+    return () => { cancelled = true; };
+  }, [playerId, validId, validInitialDetail]);
 
   const status = player ? getStatusBadge(player) : null;
   const xPts = player ? calcExpectedPoints(player, fixtures, teams, currentGW) : 0;
