@@ -79,8 +79,8 @@ export default function FixturesPage() {
           <>
             {/* Legend */}
             <div className="card p-3 mb-6">
-              <div className="flex items-center justify-center gap-4 sm:gap-6 text-xs flex-wrap">
-                <span className="text-[var(--text-tertiary)]">Difficulty:</span>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 justify-items-center sm:flex sm:items-center sm:justify-center sm:gap-6 text-xs w-fit mx-auto">
+                <span className="col-span-2 text-[var(--text-tertiary)] sm:col-span-1">Difficulty:</span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="fixture-badge fdr-2">2</span> Easy
                 </span>

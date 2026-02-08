@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
-import { fplFetch } from '@/lib/fpl-fetch';
+import { getBootstrapData } from '@/lib/fpl-server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const data = await fplFetch('/bootstrap-static/', {
-      next: { revalidate: 300 },
-    });
+    const data = await getBootstrapData();
 
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 's-maxage=300, stale-while-revalidate=600',
+      },
+    });
   } catch (error) {
     console.error('Error fetching FPL data:', error);
     return NextResponse.json(

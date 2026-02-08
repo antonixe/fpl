@@ -119,7 +119,9 @@ export function FPLProvider({ children, initialData }: FPLProviderProps) {
       return;
     }
 
-    setLoading(true);
+    // Only show loading spinner if we have NO data at all
+    const hadData = !!(cachedData?.players?.length);
+    if (!hadData) setLoading(true);
     setError(null);
 
     try {
@@ -159,21 +161,28 @@ export function FPLProvider({ children, initialData }: FPLProviderProps) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load FPL data';
 
-      // Fallback: try localStorage if API is unreachable and we have no in-memory data
-      if (!cachedData) {
-        const stored = loadFromStorage();
-        if (stored) {
-          cachedData = stored;
-          setPlayers(stored.players);
-          setTeams(stored.teams);
-          setFixtures(stored.fixtures);
-          setGameweeks(stored.gameweeks);
-          setElementTypes(stored.elementTypes);
-          setLastUpdated(new Date(stored.timestamp));
-          setError('Using cached data — FPL API is currently unreachable');
-          setLoading(false);
-          return;
-        }
+      // If we already have data (in-memory or localStorage), keep showing it
+      if (cachedData?.players?.length) {
+        // Silently fail — user still sees data, just stale
+        console.warn('FPL background refresh failed, showing cached data:', message);
+        setError(null); // Don't show error when we have valid data
+        setLoading(false);
+        return;
+      }
+
+      // No cached data at all — try localStorage as last resort
+      const stored = loadFromStorage();
+      if (stored) {
+        cachedData = stored;
+        setPlayers(stored.players);
+        setTeams(stored.teams);
+        setFixtures(stored.fixtures);
+        setGameweeks(stored.gameweeks);
+        setElementTypes(stored.elementTypes);
+        setLastUpdated(new Date(stored.timestamp));
+        setError('Using cached data — FPL API is currently unreachable');
+        setLoading(false);
+        return;
       }
 
       setError(message);
@@ -185,6 +194,26 @@ export function FPLProvider({ children, initialData }: FPLProviderProps) {
 
   useEffect(() => {
     fetchData();
+
+    // Background refresh every 5 minutes while tab is active
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        fetchData(true);
+      }
+    }, CACHE_TTL);
+
+    // Refresh when user returns to tab after being away
+    const onVisibilityChange = () => {
+      if (!document.hidden && cachedData && Date.now() - cachedData.timestamp > CACHE_TTL) {
+        fetchData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [fetchData]);
 
   // Stable data reference — only changes when data actually changes

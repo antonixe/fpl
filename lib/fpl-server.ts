@@ -23,12 +23,21 @@ export interface FPLInitialData {
 // 2MB data cache limit. We cache it in-memory with a 5-minute TTL instead.
 
 const SERVER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const STALE_TTL = 30 * 60 * 1000; // 30 minutes — serve stale data up to this age
 
 let bootstrapCache: { data: BootstrapData; timestamp: number } | null = null;
 let fixturesCache: { data: Fixture[]; timestamp: number } | null = null;
 
-function isValid<T>(cache: { data: T; timestamp: number } | null): cache is { data: T; timestamp: number } {
+// Track in-flight revalidation to avoid duplicate fetches
+let bootstrapRevalidating = false;
+let fixturesRevalidating = false;
+
+function isFresh(cache: { data: unknown; timestamp: number } | null): boolean {
   return cache !== null && Date.now() - cache.timestamp < SERVER_CACHE_TTL;
+}
+
+function isStale(cache: { data: unknown; timestamp: number } | null): boolean {
+  return cache !== null && Date.now() - cache.timestamp < STALE_TTL;
 }
 
 /**
@@ -36,14 +45,30 @@ function isValid<T>(cache: { data: T; timestamp: number } | null): cache is { da
  * Uses fplFetch for timeout + retry resilience.
  */
 export async function getBootstrapData(): Promise<BootstrapData> {
-  if (isValid(bootstrapCache)) {
+  // Fresh cache — return immediately
+  if (isFresh(bootstrapCache)) {
     logger.debug('bootstrap cache hit');
-    return bootstrapCache.data;
+    return bootstrapCache!.data;
   }
 
+  // Stale cache — return stale data and revalidate in background
+  if (isStale(bootstrapCache)) {
+    logger.debug('bootstrap cache stale — serving stale, revalidating');
+    if (!bootstrapRevalidating) {
+      bootstrapRevalidating = true;
+      fplFetch<BootstrapData>('/bootstrap-static/', { cache: 'no-store', timeout: 20_000 })
+        .then(data => { bootstrapCache = { data, timestamp: Date.now() }; })
+        .catch(err => { logger.warn('bootstrap background revalidation failed', { error: err.message }); })
+        .finally(() => { bootstrapRevalidating = false; });
+    }
+    return bootstrapCache!.data;
+  }
+
+  // No cache at all — must fetch synchronously
   const data = await logger.time('fetch bootstrap-static', () =>
     fplFetch<BootstrapData>('/bootstrap-static/', {
       cache: 'no-store',
+      timeout: 20_000,
     }),
     { source: 'fpl-server' }
   );
@@ -56,14 +81,27 @@ export async function getBootstrapData(): Promise<BootstrapData> {
  * Fetch fixtures data on the server with in-memory caching.
  */
 export async function getFixtures(): Promise<Fixture[]> {
-  if (isValid(fixturesCache)) {
+  if (isFresh(fixturesCache)) {
     logger.debug('fixtures cache hit');
-    return fixturesCache.data;
+    return fixturesCache!.data;
+  }
+
+  if (isStale(fixturesCache)) {
+    logger.debug('fixtures cache stale — serving stale, revalidating');
+    if (!fixturesRevalidating) {
+      fixturesRevalidating = true;
+      fplFetch<Fixture[]>('/fixtures/', { cache: 'no-store', timeout: 15_000 })
+        .then(data => { fixturesCache = { data, timestamp: Date.now() }; })
+        .catch(err => { logger.warn('fixtures background revalidation failed', { error: err.message }); })
+        .finally(() => { fixturesRevalidating = false; });
+    }
+    return fixturesCache!.data;
   }
 
   const data = await logger.time('fetch fixtures', () =>
     fplFetch<Fixture[]>('/fixtures/', {
       cache: 'no-store',
+      timeout: 15_000,
     }),
     { source: 'fpl-server' }
   );
@@ -99,10 +137,20 @@ export async function getPlayerDetail(playerId: number): Promise<PlayerDetailDat
     return cached.data;
   }
 
+  // Stale — return stale and refresh in background
+  if (cached && Date.now() - cached.timestamp < STALE_TTL) {
+    logger.debug(`player detail stale — serving stale: ${playerId}`);
+    fplFetch<PlayerDetailData>(`/element-summary/${playerId}/`, { cache: 'no-store', timeout: 15_000 })
+      .then(data => { playerDetailCache.set(playerId, { data, timestamp: Date.now() }); })
+      .catch(err => { logger.warn(`player detail revalidation failed: ${playerId}`, { error: err.message }); });
+    return cached.data;
+  }
+
   try {
     const data = await logger.time(`fetch element-summary/${playerId}`, () =>
       fplFetch<PlayerDetailData>(`/element-summary/${playerId}/`, {
         cache: 'no-store',
+        timeout: 15_000,
       }),
       { source: 'fpl-server' }
     );

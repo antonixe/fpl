@@ -1,9 +1,9 @@
 import { FPL_API_BASE } from '@/lib/constants';
 import { logger } from '@/lib/logger';
 
-const DEFAULT_TIMEOUT = 10_000; // 10 seconds
+const DEFAULT_TIMEOUT = 15_000; // 15 seconds (bootstrap-static is ~2.5MB)
 const MAX_RETRIES = 2;
-const RETRY_DELAY = 1_000; // 1 second
+const RETRY_DELAY = 1_500; // 1.5 seconds
 
 interface FetchOptions {
   /** Timeout in ms (default 10s) */
