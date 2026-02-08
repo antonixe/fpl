@@ -24,7 +24,7 @@ export function Footer() {
           </nav>
 
           <div className="text-[10px] text-[var(--text-muted)] text-center sm:text-right">
-            <p>&copy; {year} FPLGRID. Data from FPL API.</p>
+            <p>&copy; {year} FPLGRID.</p>
             <p className="mt-0.5">
               Press <kbd className="font-mono px-1 py-0.5 bg-[var(--bg-hover)] border border-[var(--border)] rounded text-[9px]">?</kbd> for shortcuts
             </p>
