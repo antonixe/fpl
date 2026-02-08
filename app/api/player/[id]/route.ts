@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { fplFetch } from '@/lib/fpl-fetch';
+import { getPlayerDetail } from '@/lib/fpl-server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
@@ -13,11 +15,17 @@ export async function GET(
   }
 
   try {
-    const data = await fplFetch(`/element-summary/${playerId}/`, {
-      next: { revalidate: 300 },
-    });
+    const data = await getPlayerDetail(playerId);
 
-    return NextResponse.json(data);
+    if (!data) {
+      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 's-maxage=300, stale-while-revalidate=600',
+      },
+    });
   } catch (error) {
     console.error('Error fetching player data:', error);
     return NextResponse.json(

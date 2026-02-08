@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fplFetch } from '@/lib/fpl-fetch';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ gw: string }> }
@@ -17,13 +19,17 @@ export async function GET(
 
     // Fetch both GW fixtures and live element data in parallel
     const [fixtures, liveData] = await Promise.all([
-      fplFetch<unknown[]>(`/fixtures/?event=${gwNum}`, { cache: 'no-store' }),
-      fplFetch<{ elements?: unknown[] }>(`/event/${gwNum}/live/`, { cache: 'no-store' }),
+      fplFetch<unknown[]>(`/fixtures/?event=${gwNum}`, { cache: 'no-store', timeout: 15_000 }),
+      fplFetch<{ elements?: unknown[] }>(`/event/${gwNum}/live/`, { cache: 'no-store', timeout: 15_000 }),
     ]);
 
     return NextResponse.json({
       fixtures,
       elements: liveData.elements || [],
+    }, {
+      headers: {
+        'Cache-Control': 's-maxage=30, stale-while-revalidate=60',
+      },
     });
   } catch (error) {
     console.error('Error fetching live data:', error);

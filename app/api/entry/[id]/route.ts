@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { FPL_API_BASE } from '@/lib/constants';
 import { fplFetch } from '@/lib/fpl-fetch';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
@@ -19,6 +20,7 @@ export async function GET(
     try {
       entry = await fplFetch<{ current_event?: number }>(`/entry/${entryId}/`, {
         cache: 'no-store',
+        timeout: 15_000,
       });
     } catch {
       return NextResponse.json({ error: 'Team not found. Check your FPL ID.' }, { status: 404 });
@@ -29,9 +31,9 @@ export async function GET(
     // Fetch current GW picks and transfer history in parallel
     const [picks, history] = await Promise.all([
       currentEvent
-        ? fplFetch(`/entry/${entryId}/event/${currentEvent}/picks/`, { cache: 'no-store' }).catch(() => null)
+        ? fplFetch(`/entry/${entryId}/event/${currentEvent}/picks/`, { cache: 'no-store', timeout: 15_000 }).catch(() => null)
         : null,
-      fplFetch<{ chips?: unknown[]; current?: unknown[] }>(`/entry/${entryId}/history/`, { cache: 'no-store' }).catch(() => null),
+      fplFetch<{ chips?: unknown[]; current?: unknown[] }>(`/entry/${entryId}/history/`, { cache: 'no-store', timeout: 15_000 }).catch(() => null),
     ]);
 
     return NextResponse.json({
@@ -39,6 +41,10 @@ export async function GET(
       picks,
       chips: history?.chips || [],
       season_history: history?.current || [],
+    }, {
+      headers: {
+        'Cache-Control': 's-maxage=60, stale-while-revalidate=300',
+      },
     });
   } catch (error) {
     console.error('Error fetching FPL entry:', error);
