@@ -22,7 +22,7 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://fpl.example.com";
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://fpl-sigma.vercel.app";
 
 export const metadata: Metadata = {
   title: {

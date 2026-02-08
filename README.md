@@ -66,7 +66,7 @@ See [.env.example](.env.example) for all variables. Key ones:
 | Variable | Description | Default |
 |---|---|---|
 | `NEXT_PUBLIC_FPL_API_BASE` | FPL API base URL | `https://fantasy.premierleague.com/api` |
-| `NEXT_PUBLIC_SITE_URL` | Your deployed domain (for sitemap/OG) | `https://fpl.example.com` |
+| `NEXT_PUBLIC_SITE_URL` | Your deployed domain (for sitemap/OG) | `https://fpl-sigma.vercel.app` |
 | `NEXT_PUBLIC_APP_VERSION` | App version shown in footer | `1.0.0` |
 
 ## Architecture

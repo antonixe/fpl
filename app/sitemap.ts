@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { getBootstrapData } from '@/lib/fpl-server';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://fpl.example.com';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://fpl-sigma.vercel.app';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
